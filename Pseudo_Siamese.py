@@ -67,6 +67,11 @@ class PseudoSiamese(nn.Module):
         #########
         self.dropout = nn.Dropout(0.5)
 
+        self.batch_norm_32 = nn.BatchNorm2d(32)
+        self.batch_norm_64 = nn.BatchNorm2d(64)
+        self.batch_norm_128 = nn.BatchNorm2d(128)
+        self.batch_norm_256 = nn.BatchNorm2d(256)
+
         self.max_pooling = nn.MaxPool2d(kernel_size=2, stride=2)
         self.c_conv1 = nn.Conv2d(in_channels=256, out_channels=256, kernel_size=3, stride=2, padding=1)
         self.c_conv2 = nn.Conv2d(in_channels=256, out_channels=128, kernel_size=3, stride=2, padding=1)
@@ -78,28 +83,41 @@ class PseudoSiamese(nn.Module):
 
         x = self.s_conv1(x)
         x = F.relu(x)
-        #x = nn.BatchNorm2d(x)
+        x = self.batch_norm_32(x)
 
         x = self.s_conv2(x)
         x = F.relu(x)
+        x = self.batch_norm_32(x)
+
+        x = self.max_pooling(x)
 
         x = self.s_conv3(x)
         x = F.relu(x)
+        x = self.batch_norm_64(x)
 
         x = self.s_conv4(x)
         x = F.relu(x)
+        x = self.batch_norm_64(x)
+
+        x = self.max_pooling(x)
 
         x = self.s_conv5(x)
         x = F.relu(x)
+        x = self.batch_norm_128(x)
 
         x = self.s_conv6(x)
         x = F.relu(x)
+        x = self.batch_norm_128(x)
+
+        x = self.max_pooling(x)
 
         x = self.s_conv7(x)
         x = F.relu(x)
+        x = self.batch_norm_128(x)
 
         x = self.s_conv8(x)
         x = F.relu(x)
+        x = self.batch_norm_128(x)
 
         # x value equals to => batch_size X 2 X 2 X 128
         return x
@@ -108,28 +126,41 @@ class PseudoSiamese(nn.Module):
 
         x = self.o_conv1(x)
         x = F.relu(x)
-        #x = nn.BatchNorm2d(x)
+        x = self.batch_norm_32(x)
 
         x = self.o_conv2(x)
         x = F.relu(x)
+        x = self.batch_norm_32(x)
+
+        x = self.max_pooling(x)
 
         x = self.o_conv3(x)
         x = F.relu(x)
+        x = self.batch_norm_64(x)
 
         x = self.o_conv4(x)
         x = F.relu(x)
+        x = self.batch_norm_64(x)
+
+        x = self.max_pooling(x)
 
         x = self.o_conv5(x)
         x = F.relu(x)
+        x = self.batch_norm_128(x)
 
         x = self.o_conv6(x)
         x = F.relu(x)
+        x = self.batch_norm_128(x)
+
+        x = self.max_pooling(x)
 
         x = self.o_conv7(x)
         x = F.relu(x)
+        x = self.batch_norm_128(x)
 
         x = self.o_conv8(x)
         x = F.relu(x)
+        x = self.batch_norm_128(x)
 
         # x value equals to => batch_size X 2 X 2 X 128
         return x
@@ -137,21 +168,28 @@ class PseudoSiamese(nn.Module):
     def concat_sar_optic(self,sarX, opticX):
 
         # concatenation step
-        x = torch.cat((sarX, opticX), 0)
+        x = torch.cat((sarX, opticX), dim=1)
 
         x = self.c_conv1(x)
         x = F.relu(x)
-        #x = nn.BatchNorm2d(x)
+        x = self.batch_norm_256(x)
+
 
         x = self.c_conv2(x)
         x = F.relu(x)
+        x = self.batch_norm_128(x)
+
+        x = self.max_pooling(x)
 
         # Flatten
         x = x.view(x.size()[0], -1)
 
         # Linear layers
         x = self.c_linear1(x)
+        x = F.relu(x)
+
         x = self.dropout(x)
+
         x = self.c_linear2(x)
 
         return x
@@ -208,7 +246,7 @@ if __name__=="__main__":
     # load network to GPU if it's available
     network = PseudoSiamese().to("cpu")
 
-    summary(network, input_size=[(2, 112, 112),(2, 112, 112)] , device="cpu")
+    summary(network, input_size=[(2, 128, 128),(2, 128, 128)] , device="cpu")
     optimizer = optim.Adam(network.parameters(), lr=lr, weight_decay=weight_decay)
 
     """
