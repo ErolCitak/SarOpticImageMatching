@@ -21,18 +21,20 @@ import h5py as h5
 
 do_learn = True
 save_frequency = 2
-weight_decay = 0.001 # 0.001 in paper
+weight_decay = 0.001  # 0.001 in paper
 
 num_epochs = 30
 # 40 for positive(corresponding), 40 for negative(non-corresponding) images
-batch_size = 32
-lr = 0.0009
+batch_size = 64
+lr = 0.0001  # 0.0001 was perfect one
 l2_lambda = 0.001
+
 
 def init_xavier(m):
     if type(m) == nn.Conv2d or type(m) == nn.Linear:
-        torch.nn.init.xavier_uniform_(m.weight)
-        m.bias.data.fill_(0.01)
+        torch.nn.init.xavier_uniform_(m.weight.data)
+        torch.nn.init.zeros_(m.bias.data)
+        #m.bias.data.fill_(0.01)
 
 
 class HDF5Dataset(data.Dataset):
@@ -58,15 +60,14 @@ class HDF5Dataset(data.Dataset):
         self.labels_neg = self.hf.get('labels_neg')
 
         # transformation definition
-        self.transformations = transforms.Compose([transforms.ToTensor(),transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))])
-
+        self.transformations = transforms.Compose([transforms.ToTensor()])
 
     def __getitem__(self, index):
-
         siamese_pos_label = np.asarray(self.labels_pos[index])
         siamese_neg_label = np.asarray(self.labels_neg[index])
 
         # Read each image and Convert image from numpy array to PIL image, mode 'L' is for grayscale
+        # [:,:,0]
         sar_pos_img = np.asarray(self.sar_pos_group[index]).astype(np.uint8)
         optic_pos_img = np.asarray(self.optic_pos_group[index]).astype(np.uint8)
 
@@ -138,9 +139,9 @@ class PseudoSiamese(nn.Module):
         #########
         # CONCATENATION PART
         #########
-        self.dropout = nn.Dropout(0.7)
         self.dropout3 = nn.Dropout(0.3)
         self.dropout5 = nn.Dropout(0.5)
+        self.dropout7 = nn.Dropout(0.7)
 
         self.batch_norm_32 = nn.BatchNorm2d(32)
         self.batch_norm_64 = nn.BatchNorm2d(64)
@@ -148,39 +149,34 @@ class PseudoSiamese(nn.Module):
         self.batch_norm_256 = nn.BatchNorm2d(256)
 
         self.max_pooling = nn.MaxPool2d(kernel_size=2, stride=2)
-        self.c_conv1 = nn.Conv2d(in_channels=256, out_channels=256, kernel_size=3, stride=2, padding=1)
-        self.c_conv2 = nn.Conv2d(in_channels=256, out_channels=128, kernel_size=3, stride=2, padding=1)
-        self.c_linear1 = nn.Linear(512, 512)
-        self.c_linear2 = nn.Linear(512, 2)
-
+        self.g_average = nn.AvgPool2d(kernel_size=16)
+        self.c_conv1 = nn.Conv2d(in_channels=128, out_channels=128, kernel_size=3, stride=2, padding=1)
+        self.c_conv2 = nn.Conv2d(in_channels=128, out_channels=64, kernel_size=3, stride=2, padding=1)
+        self.c_linear1 = nn.Linear(1024, 256)
+        self.c_linear2 = nn.Linear(256, 2)
 
     def forward_sar(self, x):
-
-
         x = self.s_conv1(x)
         x = F.relu(x)
-        x = self.batch_norm_32(x)
-
-        x = self.dropout3(x)
+        # x = self.batch_norm_32(x)
 
         x = self.s_conv2(x)
         x = F.relu(x)
-        x = self.batch_norm_32(x)
+        # x = self.batch_norm_32(x)
 
         x = self.max_pooling(x)
 
         x = self.s_conv3(x)
         x = F.relu(x)
-        x = self.batch_norm_64(x)
-
-        x = self.dropout5(x)
+        # x = self.batch_norm_64(x)
 
         x = self.s_conv4(x)
         x = F.relu(x)
-        x = self.batch_norm_64(x)
+        # x = self.batch_norm_64(x)
 
         x = self.max_pooling(x)
 
+        """
         x = self.s_conv5(x)
         x = F.relu(x)
         x = self.batch_norm_128(x)
@@ -191,7 +187,8 @@ class PseudoSiamese(nn.Module):
 
         x = self.max_pooling(x)
 
-        """
+
+
         x = self.s_conv7(x)
         x = F.relu(x)
         x = self.batch_norm_128(x)
@@ -200,33 +197,32 @@ class PseudoSiamese(nn.Module):
         x = F.relu(x)
         x = self.batch_norm_128(x)
         """
+
         # x value equals to => batch_size X 2 X 2 X 128
         return x
 
-    def forward_optic(self,x):
-
+    def forward_optic(self, x):
         x = self.o_conv1(x)
         x = F.relu(x)
-        x = self.batch_norm_32(x)
-
-        x = self.dropout3(x)
+        # x = self.batch_norm_32(x)
 
         x = self.o_conv2(x)
         x = F.relu(x)
-        x = self.batch_norm_32(x)
+        # x = self.batch_norm_32(x)
 
         x = self.max_pooling(x)
 
         x = self.o_conv3(x)
         x = F.relu(x)
-        x = self.batch_norm_64(x)
+        # x = self.batch_norm_64(x)
 
         x = self.o_conv4(x)
         x = F.relu(x)
-        x = self.batch_norm_64(x)
+        # x = self.batch_norm_64(x)
 
         x = self.max_pooling(x)
 
+        """
         x = self.o_conv5(x)
         x = F.relu(x)
         x = self.batch_norm_128(x)
@@ -237,7 +233,7 @@ class PseudoSiamese(nn.Module):
 
         x = self.max_pooling(x)
 
-        """
+
         x = self.o_conv7(x)
         x = F.relu(x)
         x = self.batch_norm_128(x)
@@ -246,23 +242,28 @@ class PseudoSiamese(nn.Module):
         x = F.relu(x)
         x = self.batch_norm_128(x)
         """
+
         # x value equals to => batch_size X 2 X 2 X 128
         return x
 
-    def concat_sar_optic(self,sarX, opticX):
-
+    def concat_sar_optic(self, sarX, opticX):
         # concatenation step
         x = torch.cat((sarX, opticX), dim=1)
 
         x = self.c_conv1(x)
         x = F.relu(x)
-        x = self.batch_norm_256(x)
+        # x = self.batch_norm_256(x)
+
+        # 7x7x256 --> 256,1,1
+        #x = self.g_average(x)
+
 
         x = self.c_conv2(x)
         x = F.relu(x)
-        x = self.batch_norm_128(x)
+        # x = self.batch_norm_128(x)
 
         x = self.max_pooling(x)
+
 
         # Flatten
         x = x.view(x.size()[0], -1)
@@ -271,27 +272,31 @@ class PseudoSiamese(nn.Module):
         x = self.c_linear1(x)
         x = F.relu(x)
 
-        x = self.dropout(x)
+        x = self.dropout7(x)
 
         x = self.c_linear2(x)
 
         return x
 
     def forward(self, sar_data, optic_data):
-
         sar_res = self.forward_sar(sar_data)
         optic_res = self.forward_optic(optic_data)
 
-        out = self.concat_sar_optic(sar_res,optic_res)
+        out = self.concat_sar_optic(sar_res, optic_res)
         out = F.softmax(out)
 
         return out
 
-def train(model, device, data_loader, epoch, optimizer):
+
+def train(model, device, data_loader, epoch, optimizer, i):
+    print("****************************************")
+    print("DATA GROUP: ", i)
+    print("****************************************")
 
     loss_f = nn.BCELoss()
 
-    for batch_idx, (sar_pos_data, optic_pos_data, target_pos, sar_neg_data, optic_neg_data, target_neg) in enumerate(data_loader):
+    for batch_idx, (sar_pos_data, optic_pos_data, target_pos, sar_neg_data, optic_neg_data, target_neg) in enumerate(
+            data_loader):
 
         """
         for i in range(len(sar_pos_data)):
@@ -317,23 +322,21 @@ def train(model, device, data_loader, epoch, optimizer):
         target_neg = target_neg.to(device, dtype=torch.float32)
         target_negative = torch.squeeze(target_neg)
 
+        """
         l2_reg = 0
         for W in model.parameters():
             l2_reg = l2_reg + W.norm(2)
-
+        """
 
         loss_positive = loss_f(output_positive, target_positive)
         loss_negative = loss_f(output_negative, target_negative)
-        #print("Loss Pos/Neg:", loss_positive, loss_negative)
-        #loss_negative = F.binary_cross_entropy(output_negative, target_negative)
 
-        #loss = loss_positive
-        loss = loss_positive + loss_negative + (l2_reg * l2_lambda)
+        loss = loss_positive + loss_negative
 
         loss.backward()
         optimizer.step()
 
-        if batch_idx % 10 == 0:
+        if batch_idx % 100 == 0:
             print('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
                 epoch, batch_idx * batch_size, len(data_loader.dataset),
                        100. * batch_idx * batch_size / len(data_loader.dataset),
@@ -348,18 +351,8 @@ def test(model, device, test_loader):
         accurate_labels = 0
         all_labels = 0
         loss = 0
-        for batch_idx, (sar_pos_data, optic_pos_data, target_pos, sar_neg_data, optic_neg_data, target_neg) in enumerate(test_loader):
-
-            """
-            for i in range(len(sar_pos_data)):
-                sar_pos_data[i] = sar_pos_data[i].to(device)
-                optic_pos_data[i] = optic_pos_data[i].to(device)
-                target_pos[i] = target_pos[i].to(device)
-
-                sar_neg_data[i] = sar_neg_data[i].to(device)
-                optic_neg_data[i] = optic_neg_data[i].to(device)
-                target_neg[i] = target_neg[i].to(device)
-            """
+        for batch_idx, (
+        sar_pos_data, optic_pos_data, target_pos, sar_neg_data, optic_neg_data, target_neg) in enumerate(test_loader):
             output_positive = model(sar_pos_data.to(device), optic_pos_data.to(device))
             output_negative = model(sar_neg_data.to(device), optic_neg_data.to(device))
 
@@ -375,8 +368,10 @@ def test(model, device, test_loader):
 
             loss = loss + loss_positive + loss_negative
 
-            accurate_labels_positive = torch.sum(torch.argmax(output_positive, dim=1) == torch.argmax(target_positive, dim=1)).cpu()
-            accurate_labels_negative = torch.sum(torch.argmax(output_negative, dim=1) == torch.argmax(target_negative, dim=1)).cpu()
+            accurate_labels_positive = torch.sum(
+                torch.argmax(output_positive, dim=1) == torch.argmax(target_positive, dim=1)).cpu()
+            accurate_labels_negative = torch.sum(
+                torch.argmax(output_negative, dim=1) == torch.argmax(target_negative, dim=1)).cpu()
 
             accurate_labels = accurate_labels + accurate_labels_positive + accurate_labels_negative
             all_labels = all_labels + len(target_positive) + len(target_negative)
@@ -385,7 +380,7 @@ def test(model, device, test_loader):
         print('Test accuracy: {}/{} ({:.3f}%)\tLoss: {:.6f}'.format(accurate_labels, all_labels, accuracy, loss))
 
 
-if __name__=="__main__":
+if __name__ == "__main__":
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
@@ -393,17 +388,33 @@ if __name__=="__main__":
     network = PseudoSiamese().to(device)
     network.apply(init_xavier)
 
-    """
-    summary(network, input_size=[(2, 128, 128),(2, 128, 128)] , device="cpu")
+    summary(network, input_size=[(2, 128, 128), (2, 128, 128)], device="cuda")
     optimizer = optim.Adam(network.parameters(), lr=lr, weight_decay=weight_decay)
-    """
 
     # Call dataset
-    Train_Dataset =  HDF5Dataset('D:/Sen1_2_/Train_Matching.h5')
-    Test_Dataset =  HDF5Dataset('D:/Sen1_2_/Validation_Matching.h5')
+    """
+    Train_Dataset_1 =  HDF5Dataset('D:/Sen1_2_/All_Train_1.h5')
+    Train_Dataset_2 =  HDF5Dataset('D:/Sen1_2_/All_Train_2.h5')
+    Train_Dataset_3 =  HDF5Dataset('D:/Sen1_2_/All_Train_3.h5')
+    Train_Dataset_4 =  HDF5Dataset('D:/Sen1_2_/All_Train_4.h5')
+    Train_Dataset_5 =  HDF5Dataset('D:/Sen1_2_/All_Train_5.h5')
+    Test_Dataset =  HDF5Dataset('D:/Sen1_2_/All_Test.h5')
+    """
+    Train_Dataset = HDF5Dataset('D:/Sen1_2_/Train_Matching.h5')
+    Test_Dataset = HDF5Dataset('D:/Sen1_2_/Test_Matching.h5')
 
     # Define data loader
+    """
+    siamese_train_loader_1 = torch.utils.data.DataLoader(dataset=Train_Dataset_1, batch_size=batch_size)
+    siamese_train_loader_2 = torch.utils.data.DataLoader(dataset=Train_Dataset_2, batch_size=batch_size)
+    siamese_train_loader_3 = torch.utils.data.DataLoader(dataset=Train_Dataset_3, batch_size=batch_size)
+    siamese_train_loader_4 = torch.utils.data.DataLoader(dataset=Train_Dataset_4, batch_size=batch_size)
+    siamese_train_loader_5 = torch.utils.data.DataLoader(dataset=Train_Dataset_5, batch_size=batch_size)
+    """
     siamese_train_loader = torch.utils.data.DataLoader(dataset=Train_Dataset, batch_size=batch_size)
+
+    # train_loader= [siamese_train_loader_1,siamese_train_loader_2,siamese_train_loader_3,siamese_train_loader_4,siamese_train_loader_5]
+    train_loader = [siamese_train_loader]
     siamese_test_loader = torch.utils.data.DataLoader(dataset=Test_Dataset, batch_size=batch_size)
 
     optimizer = optim.Adam(network.parameters(), lr=lr, weight_decay=weight_decay)
@@ -417,8 +428,11 @@ if __name__=="__main__":
     """
 
     for epoch in range(num_epochs):
-        train(network, device, siamese_train_loader, epoch, optimizer)
-        test(network,device,siamese_test_loader)
+
+        for i in range(len(train_loader)):
+            train(network, device, train_loader[i], epoch, optimizer, i)
+
+        test(network, device, siamese_test_loader)
 
     # Complete train-test
     """
