@@ -388,7 +388,8 @@ def test(model, device, test_loader):
         accurate_labels = 0
         all_labels = 0
         loss = 0
-        for batch_idx, (sar_pos_data, optic_pos_data, target_pos, sar_neg_data, optic_neg_data, target_neg) in enumerate(test_loader):
+        for batch_idx, (sar_pos_data, optic_pos_data, target_pos, sar_neg_data, optic_neg_data, target_neg,
+                        sar_sal_pos, opt_sal_pos, sar_sal_neg, opt_sal_neg) in enumerate(test_loader):
 
             """
             for i in range(len(sar_pos_data)):
@@ -400,8 +401,9 @@ def test(model, device, test_loader):
                 optic_neg_data[i] = optic_neg_data[i].to(device)
                 target_neg[i] = target_neg[i].to(device)
             """
-            output_positive = model(sar_pos_data.to(device), optic_pos_data.to(device))
-            output_negative = model(sar_neg_data.to(device), optic_neg_data.to(device))
+            output_positive = model(sar_pos_data.to(device), optic_pos_data.to(device), sar_sal_pos.to(device), opt_sal_pos.to(device))
+    
+            output_negative = model(sar_neg_data.to(device), optic_neg_data.to(device), sar_sal_neg.to(device), opt_sal_neg.to(device))
 
             # Ground truth operations
             target_pos = target_pos.to(device, dtype=torch.float32)
