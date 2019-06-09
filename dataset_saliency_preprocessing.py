@@ -18,12 +18,12 @@ from skimage.measure import compare_psnr
 if __name__ == "__main__":
 
     # path of images
-    sar_images_path = "C://Users//PC//Desktop//sar_images"
-    optic_images_path = "C://Users//PC//Desktop//images"
+    sar_images_path = "D://Sen1_2_//SAR"
+    optic_images_path = "D://Sen1_2_//OPTIC"
 
     # saving_paths
-    sar_saving_path = "C://Users//PC//Desktop//sar_images_sal"
-    optic_saving_path = "C://Users//PC//Desktop//images_sal"
+    sar_saving_path = "D://Sen1_2_//SAR_SAL"
+    optic_saving_path = "D://Sen1_2_//OPTIC_SAL"
 
     # list images
     sar_images = os.listdir(sar_images_path)
@@ -78,16 +78,19 @@ if __name__ == "__main__":
         cv2.imwrite(os.path.join(sar_saving_path,sar_images[i]), saliencyMap_sar)
         cv2.imwrite(os.path.join(optic_saving_path,fully_name), saliencyMap_opt)
 
+        """
+        # Uncomment if you want to compare SSIM metric
         sar_sal.append(saliencyMap_sar)
         opt_sal.append(saliencyMap_opt)
+        
 
-
-    for i in range(len(sar_sal)):
-        score = compare_ssim(sar_sal[i], opt_sal[i])
-        scores.append(score)
-
-    print(scores)
-    print("Mean/Std/Var: ", np.mean(scores), np.std(scores), np.var(scores))
-
-    plt.plot(scores)
-    plt.show()
+        for i in range(len(sar_sal)):
+            score = compare_ssim(sar_sal[i], opt_sal[i])
+            scores.append(score)
+    
+        print(scores)
+        print("Mean/Std/Var: ", np.mean(scores), np.std(scores), np.var(scores))
+        
+        plt.plot(scores)
+        plt.show()
+        """
