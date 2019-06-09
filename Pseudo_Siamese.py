@@ -23,16 +23,17 @@ do_learn = True
 save_frequency = 2
 weight_decay = 0.001  # 0.001 in paper
 
+model_number = 6
+
 num_epochs = 30
-# 40 for positive(corresponding), 40 for negative(non-corresponding) images
-batch_size = 64
-lr = 0.0001  # 0.0001 was perfect one
-l2_lambda = 0.001
+weight_decay = 0.005  # 0.001 in paper
+batch_size = 96
+lr = 0.0005
 
 
 def init_xavier(m):
     if type(m) == nn.Conv2d or type(m) == nn.Linear:
-        torch.nn.init.xavier_uniform_(m.weight.data)
+        torch.nn.init.kaiming_uniform_(m.weight.data)
         torch.nn.init.zeros_(m.bias.data)
         #m.bias.data.fill_(0.01)
 
@@ -68,13 +69,14 @@ class HDF5Dataset(data.Dataset):
 
         # Read each image and Convert image from numpy array to PIL image, mode 'L' is for grayscale
         # [:,:,0]
-        sar_pos_img = np.asarray(self.sar_pos_group[index]).astype(np.uint8)
-        optic_pos_img = np.asarray(self.optic_pos_group[index]).astype(np.uint8)
+        sar_pos_img = np.reshape(np.asarray([self.sar_pos_group[index]]).astype(np.uint8), (112,112,2))
+        optic_pos_img =  np.reshape(np.asarray([self.optic_pos_group[index]]).astype(np.uint8), (112,112,2))
 
-        sar_neg_img = np.asarray(self.sar_neg_group[index]).astype(np.uint8)
-        optic_neg_img = np.asarray(self.optic_neg_group[index]).astype(np.uint8)
+        sar_neg_img =  np.reshape(np.asarray([self.sar_neg_group[index]]).astype(np.uint8), (112,112,2))
+        optic_neg_img =  np.reshape(np.asarray([self.optic_neg_group[index]]).astype(np.uint8), (112,112,2))
 
         # Array to PIL Image
+        #  'L'
         sar_pos_img = Image.fromarray(sar_pos_img)
         optic_pos_img = Image.fromarray(optic_pos_img)
 
@@ -152,26 +154,26 @@ class PseudoSiamese(nn.Module):
         self.g_average = nn.AvgPool2d(kernel_size=16)
         self.c_conv1 = nn.Conv2d(in_channels=128, out_channels=128, kernel_size=3, stride=2, padding=1)
         self.c_conv2 = nn.Conv2d(in_channels=128, out_channels=64, kernel_size=3, stride=2, padding=1)
-        self.c_linear1 = nn.Linear(1024, 256)
-        self.c_linear2 = nn.Linear(256, 2)
+        self.c_linear1 = nn.Linear(576, 512)
+        self.c_linear2 = nn.Linear(512, 2)
 
     def forward_sar(self, x):
         x = self.s_conv1(x)
-        x = F.relu(x)
+        x = F.leaky_relu(x)
         # x = self.batch_norm_32(x)
 
         x = self.s_conv2(x)
-        x = F.relu(x)
+        x = F.leaky_relu(x)
         # x = self.batch_norm_32(x)
 
         x = self.max_pooling(x)
 
         x = self.s_conv3(x)
-        x = F.relu(x)
+        x = F.leaky_relu(x)
         # x = self.batch_norm_64(x)
 
         x = self.s_conv4(x)
-        x = F.relu(x)
+        x = F.leaky_relu(x)
         # x = self.batch_norm_64(x)
 
         x = self.max_pooling(x)
@@ -202,22 +204,22 @@ class PseudoSiamese(nn.Module):
         return x
 
     def forward_optic(self, x):
-        x = self.o_conv1(x)
-        x = F.relu(x)
+        x = self.s_conv1(x)
+        x = F.leaky_relu(x)
         # x = self.batch_norm_32(x)
 
-        x = self.o_conv2(x)
-        x = F.relu(x)
+        x = self.s_conv2(x)
+        x = F.leaky_relu(x)
         # x = self.batch_norm_32(x)
 
         x = self.max_pooling(x)
 
-        x = self.o_conv3(x)
-        x = F.relu(x)
+        x = self.s_conv3(x)
+        x = F.leaky_relu(x)
         # x = self.batch_norm_64(x)
 
-        x = self.o_conv4(x)
-        x = F.relu(x)
+        x = self.s_conv4(x)
+        x = F.leaky_relu(x)
         # x = self.batch_norm_64(x)
 
         x = self.max_pooling(x)
@@ -251,7 +253,7 @@ class PseudoSiamese(nn.Module):
         x = torch.cat((sarX, opticX), dim=1)
 
         x = self.c_conv1(x)
-        x = F.relu(x)
+        x = F.leaky_relu(x)
         # x = self.batch_norm_256(x)
 
         # 7x7x256 --> 256,1,1
@@ -259,7 +261,7 @@ class PseudoSiamese(nn.Module):
 
 
         x = self.c_conv2(x)
-        x = F.relu(x)
+        x = F.leaky_relu(x)
         # x = self.batch_norm_128(x)
 
         x = self.max_pooling(x)
@@ -268,11 +270,13 @@ class PseudoSiamese(nn.Module):
         # Flatten
         x = x.view(x.size()[0], -1)
 
+        x = self.dropout5(x)
+
         # Linear layers
         x = self.c_linear1(x)
-        x = F.relu(x)
+        x = F.leaky_relu(x)
 
-        x = self.dropout7(x)
+        x = self.dropout5(x)
 
         x = self.c_linear2(x)
 
@@ -351,8 +355,8 @@ def test(model, device, test_loader):
         accurate_labels = 0
         all_labels = 0
         loss = 0
-        for batch_idx, (
-        sar_pos_data, optic_pos_data, target_pos, sar_neg_data, optic_neg_data, target_neg) in enumerate(test_loader):
+        for batch_idx, (sar_pos_data, optic_pos_data, target_pos, sar_neg_data, optic_neg_data, target_neg) in enumerate(test_loader):
+
             output_positive = model(sar_pos_data.to(device), optic_pos_data.to(device))
             output_negative = model(sar_neg_data.to(device), optic_neg_data.to(device))
 
@@ -378,30 +382,33 @@ def test(model, device, test_loader):
 
         accuracy = 100. * accurate_labels / all_labels
         print('Test accuracy: {}/{} ({:.3f}%)\tLoss: {:.6f}'.format(accurate_labels, all_labels, accuracy, loss))
+        return accurate_labels
 
 
 if __name__ == "__main__":
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    global_accurate_labels_test = 0
 
     # load network to GPU if it's available
     network = PseudoSiamese().to(device)
     network.apply(init_xavier)
 
-    summary(network, input_size=[(2, 128, 128), (2, 128, 128)], device="cuda")
+    summary(network, input_size=[(2, 112, 112), (2, 112, 112)], device="cuda")
     optimizer = optim.Adam(network.parameters(), lr=lr, weight_decay=weight_decay)
 
     # Call dataset
+
+    Train_Dataset_1 =  HDF5Dataset('D:/Sen1_2_/Train_Matching.h5')
+    Train_Dataset_2 =  HDF5Dataset('D:/Sen1_2_/Train_Matching_H.h5')
+    Train_Dataset_3 =  HDF5Dataset('D:/Sen1_2_/Train_Matching_V.h5')
     """
-    Train_Dataset_1 =  HDF5Dataset('D:/Sen1_2_/All_Train_1.h5')
-    Train_Dataset_2 =  HDF5Dataset('D:/Sen1_2_/All_Train_2.h5')
-    Train_Dataset_3 =  HDF5Dataset('D:/Sen1_2_/All_Train_3.h5')
     Train_Dataset_4 =  HDF5Dataset('D:/Sen1_2_/All_Train_4.h5')
     Train_Dataset_5 =  HDF5Dataset('D:/Sen1_2_/All_Train_5.h5')
     Test_Dataset =  HDF5Dataset('D:/Sen1_2_/All_Test.h5')
     """
-    Train_Dataset = HDF5Dataset('D:/Sen1_2_/Train_Matching.h5')
-    Test_Dataset = HDF5Dataset('D:/Sen1_2_/Test_Matching.h5')
+    #Train_Dataset = HDF5Dataset('D:/Sen1_2_/Train_Matching_V2.h5')
+    Test_Dataset = HDF5Dataset('D:/Sen1_2_/Validation_Matching.h5')
 
     # Define data loader
     """
@@ -411,10 +418,12 @@ if __name__ == "__main__":
     siamese_train_loader_4 = torch.utils.data.DataLoader(dataset=Train_Dataset_4, batch_size=batch_size)
     siamese_train_loader_5 = torch.utils.data.DataLoader(dataset=Train_Dataset_5, batch_size=batch_size)
     """
-    siamese_train_loader = torch.utils.data.DataLoader(dataset=Train_Dataset, batch_size=batch_size)
+    siamese_train_loader_1 = torch.utils.data.DataLoader(dataset=Train_Dataset_1, batch_size=batch_size)
+    siamese_train_loader_2 = torch.utils.data.DataLoader(dataset=Train_Dataset_2, batch_size=batch_size)
+    siamese_train_loader_3 = torch.utils.data.DataLoader(dataset=Train_Dataset_3, batch_size=batch_size)
 
     # train_loader= [siamese_train_loader_1,siamese_train_loader_2,siamese_train_loader_3,siamese_train_loader_4,siamese_train_loader_5]
-    train_loader = [siamese_train_loader]
+    train_loader = [siamese_train_loader_1, siamese_train_loader_2, siamese_train_loader_3]
     siamese_test_loader = torch.utils.data.DataLoader(dataset=Test_Dataset, batch_size=batch_size)
 
     optimizer = optim.Adam(network.parameters(), lr=lr, weight_decay=weight_decay)
@@ -428,11 +437,25 @@ if __name__ == "__main__":
     """
 
     for epoch in range(num_epochs):
-
         for i in range(len(train_loader)):
             train(network, device, train_loader[i], epoch, optimizer, i)
+            print("*******************************************************")
 
-        test(network, device, siamese_test_loader)
+
+        print("*******************************************************")
+        print("*******************************************************")
+        epoch_accurate_label = test(network, device, siamese_test_loader)
+
+        epoch_accurate_label = test(network, device, siamese_test_loader)
+
+        if epoch_accurate_label > global_accurate_labels_test:
+            # better model means
+            torch.save(network.state_dict(), os.path.join('./saved_models', 'model_'+str(model_number)+'_epoch-{}.pth'.format(epoch)))
+            global_accurate_labels_test = epoch_accurate_label
+        print("*******************************************************")
+        print("*******************************************************")
+
+
 
     # Complete train-test
     """
